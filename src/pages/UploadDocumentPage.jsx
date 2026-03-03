@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 
 export default function UploadDocumentPage() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export default function UploadDocumentPage() {
       });
       navigate(`/admin/documents/${data.id}/regions`);
     } catch (err) {
-      setError(err.response?.data?.detail || "Upload failed");
+      setError(extractApiErrorMessage(err, "Upload failed"));
     } finally {
       setLoading(false);
     }

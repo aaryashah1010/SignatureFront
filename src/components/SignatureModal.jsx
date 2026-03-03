@@ -12,6 +12,7 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
   const [typedName, setTypedName] = useState("");
   const [typedFont, setTypedFont] = useState("classic");
   const [uploadedBase64, setUploadedBase64] = useState(null);
+  const [localError, setLocalError] = useState("");
   const [lines, setLines] = useState([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const stageRef = useRef(null);
@@ -57,8 +58,13 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
 
   const handleSubmit = () => {
     if (mode === "draw") {
+      if (!lines.length) {
+        setLocalError("Draw your signature first.");
+        return;
+      }
       const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2 });
       if (!dataUrl) return;
+      setLocalError("");
       onSubmit({
         method: "draw",
         drawn_signature_base64: dataUrl
@@ -66,13 +72,23 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
       return;
     }
     if (mode === "type") {
+      if (!typedName.trim()) {
+        setLocalError("Type your signature first.");
+        return;
+      }
+      setLocalError("");
       onSubmit({
         method: "type",
-        typed_name: typedName,
+        typed_name: typedName.trim(),
         typed_font: typedFont
       });
       return;
     }
+    if (!uploadedBase64) {
+      setLocalError("Upload a signature image first.");
+      return;
+    }
+    setLocalError("");
     onSubmit({
       method: "upload",
       uploaded_signature_base64: uploadedBase64
@@ -91,7 +107,10 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
             <button
               key={value}
               className={`rounded-lg px-3 py-2 text-sm ${mode === value ? "bg-sky-700" : "bg-slate-800"}`}
-              onClick={() => setMode(value)}
+              onClick={() => {
+                setMode(value);
+                setLocalError("");
+              }}
               type="button"
             >
               {value}
@@ -154,6 +173,8 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
             {uploadedBase64 ? <img src={uploadedBase64} alt="Uploaded signature" className="max-h-32 rounded border border-slate-700" /> : null}
           </div>
         )}
+
+        {localError ? <p className="mt-3 text-sm text-red-400">{localError}</p> : null}
 
         <div className="mt-6 flex justify-end gap-2">
           <button className="rounded-lg border border-slate-700 px-3 py-2" onClick={onClose} type="button">

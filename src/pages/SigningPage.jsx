@@ -4,6 +4,7 @@ import api from "../api/client";
 import AppShell from "../components/AppShell";
 import PdfPageCanvas from "../components/PdfPageCanvas";
 import SignatureModal from "../components/SignatureModal";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 import { useAuthStore } from "../store/authStore";
 
 function denormalize(region, viewport) {
@@ -38,7 +39,7 @@ export default function SigningPage() {
       if (fileUrl) URL.revokeObjectURL(fileUrl);
       setFileUrl(URL.createObjectURL(fileRes.data));
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to load signing document");
+      setError(extractApiErrorMessage(err, "Failed to load signing document"));
     }
   };
 
@@ -85,7 +86,7 @@ export default function SigningPage() {
       setSelectedRegion(null);
       await load();
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to sign region");
+      setError(extractApiErrorMessage(err, "Failed to sign region"));
     } finally {
       setSaving(false);
     }

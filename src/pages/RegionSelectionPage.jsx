@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
 import PdfPageCanvas from "../components/PdfPageCanvas";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 
 function denormalize(region, viewport) {
   return {
@@ -41,7 +42,7 @@ export default function RegionSelectionPage() {
         setSelectedSigner(signerRes.data[0]?.id || "");
         setFileUrl(URL.createObjectURL(fileRes.data));
       } catch (err) {
-        setError(err.response?.data?.detail || "Failed to load region setup");
+        setError(extractApiErrorMessage(err, "Failed to load region setup"));
       }
     }
     load();
@@ -126,7 +127,7 @@ export default function RegionSelectionPage() {
       await api.post(`/documents/${id}/regions`, { regions: newRegions.map(({ id: regionId, ...rest }) => rest) });
       navigate("/admin");
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to save regions");
+      setError(extractApiErrorMessage(err, "Failed to save regions"));
     }
   };
 

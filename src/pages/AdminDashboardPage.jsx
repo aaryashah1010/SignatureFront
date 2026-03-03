@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 
 export default function AdminDashboardPage() {
   const [documents, setDocuments] = useState([]);
@@ -17,7 +18,7 @@ export default function AdminDashboardPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.response?.data?.detail || "Download failed");
+      setError(extractApiErrorMessage(err, "Download failed"));
     }
   };
 
@@ -27,7 +28,7 @@ export default function AdminDashboardPage() {
         const { data } = await api.get("/documents/my");
         setDocuments(data);
       } catch (err) {
-        setError(err.response?.data?.detail || "Failed to load documents");
+        setError(extractApiErrorMessage(err, "Failed to load documents"));
       }
     }
     load();

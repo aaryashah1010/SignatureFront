@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
 import PdfPageCanvas from "../components/PdfPageCanvas";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 
 export default function DocumentPreviewPage() {
   const { id } = useParams();
@@ -21,7 +22,7 @@ export default function DocumentPreviewPage() {
         setDocument(docRes.data);
         setFileUrl(URL.createObjectURL(fileRes.data));
       } catch (err) {
-        setError(err.response?.data?.detail || "Failed to preview document");
+        setError(extractApiErrorMessage(err, "Failed to preview document"));
       }
     }
     load();

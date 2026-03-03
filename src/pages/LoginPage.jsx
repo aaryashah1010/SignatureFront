@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api/client";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 import { useAuthStore } from "../store/authStore";
 
 export default function LoginPage() {
@@ -20,7 +21,7 @@ export default function LoginPage() {
       setAuth(data.access_token, data.user);
       navigate(data.user.role === "ADMIN" ? "/admin" : "/signer");
     } catch (err) {
-      setError(err.response?.data?.detail || "Login failed");
+      setError(extractApiErrorMessage(err, "Login failed"));
     } finally {
       setLoading(false);
     }

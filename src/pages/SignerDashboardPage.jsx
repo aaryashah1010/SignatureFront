@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
+import { extractApiErrorMessage } from "../lib/errorMessage";
 
 export default function SignerDashboardPage() {
   const [documents, setDocuments] = useState([]);
@@ -13,7 +14,7 @@ export default function SignerDashboardPage() {
         const { data } = await api.get("/documents/pending");
         setDocuments(data);
       } catch (err) {
-        setError(err.response?.data?.detail || "Failed to load pending documents");
+        setError(extractApiErrorMessage(err, "Failed to load pending documents"));
       }
     }
     load();

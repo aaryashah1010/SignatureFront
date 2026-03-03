@@ -1,7 +1,7 @@
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
-import workerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
+import PdfJsWorker from "pdfjs-dist/build/pdf.worker.mjs?worker";
 
-GlobalWorkerOptions.workerSrc = workerSrc;
+GlobalWorkerOptions.workerPort = new PdfJsWorker();
 
 export async function loadPdfFromUrl(url) {
   const task = getDocument(url);
