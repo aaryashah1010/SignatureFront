@@ -28,6 +28,8 @@ export default function SigningPage() {
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const load = async () => {
     try {
@@ -50,20 +52,28 @@ export default function SigningPage() {
     };
   }, [id]);
 
+  // Regions assigned to the current signer.
   const signerRegions = useMemo(
-    () =>
-      (document?.regions || []).filter((region) => region.assigned_to === user.id),
+    () => (document?.regions || []).filter((r) => r.assigned_to === user.id),
     [document, user.id]
   );
+
+  // Progress counters.
+  const assignedTotal = signerRegions.length;
+  const assignedSigned = signerRegions.filter((r) => r.signed).length;
+  const canSubmit = assignedTotal > 0 && assignedSigned === assignedTotal;
 
   const overlays = useMemo(
     () =>
       signerRegions
-        .filter((region) => region.page_number === pageNumber)
-        .map((region) => ({
-          ...denormalize(region, viewport),
-          className: region.signed ? "border-slate-500 bg-slate-500/20 pointer-events-none" : "border-emerald-500 bg-emerald-500/20",
-          onClick: region.signed ? undefined : () => setSelectedRegion(region)
+        .filter((r) => r.page_number === pageNumber)
+        .map((r) => ({
+          ...denormalize(r, viewport),
+          className: r.signed
+            ? "border-amber-500 bg-amber-500/20"
+            : "border-emerald-500 bg-emerald-500/20",
+          onClick: r.signed ? undefined : () => setSelectedRegion(r),
+          onDoubleClick: r.signed ? () => setSelectedRegion(r) : undefined
         })),
     [signerRegions, pageNumber, viewport]
   );
@@ -92,10 +102,76 @@ export default function SigningPage() {
     }
   };
 
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await api.post(`/documents/${id}/submit`);
+      setSubmitSuccess(true);
+    } catch (err) {
+      setError(extractApiErrorMessage(err, "Submit failed. Please try again."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Submission success screen ─────────────────────────────────────────────
+  if (submitSuccess) {
+    return (
+      <AppShell title="Signing Complete">
+        <div className="mx-auto max-w-md rounded-xl border border-emerald-700 bg-emerald-900/20 p-8 text-center">
+          <svg
+            className="mx-auto mb-4 h-16 w-16 text-emerald-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <h2 className="mb-2 text-xl font-semibold text-emerald-300">
+            Document Submitted
+          </h2>
+          <p className="mb-6 text-sm text-slate-400">
+            Your signatures have been submitted and the external system has been notified.
+          </p>
+          <button
+            className="rounded bg-slate-700 px-5 py-2 text-sm text-slate-200 hover:bg-slate-600"
+            onClick={() => navigate("/signer")}
+            type="button"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell title="Signing Page">
       {error ? <p className="mb-3 text-red-400">{error}</p> : null}
-      <div className="mb-4 flex flex-wrap gap-3">
+
+      {/* ── Progress counter + controls ── */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {/* Signing progress pill */}
+        {assignedTotal > 0 && (
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              canSubmit
+                ? "bg-emerald-800 text-emerald-200"
+                : "bg-slate-700 text-slate-300"
+            }`}
+          >
+            Signed {assignedSigned} of {assignedTotal} required region
+            {assignedTotal !== 1 ? "s" : ""}
+          </span>
+        )}
+
         <label className="text-sm text-slate-300">
           Page
           <select
@@ -104,16 +180,53 @@ export default function SigningPage() {
             onChange={(e) => setPageNumber(Number(e.target.value))}
           >
             {Array.from({ length: document?.total_pages || 1 }).map((_, idx) => (
-              <option key={idx + 1} value={idx + 1}>Page {idx + 1}</option>
+              <option key={idx + 1} value={idx + 1}>
+                Page {idx + 1}
+              </option>
             ))}
           </select>
         </label>
-        <button className="rounded border border-slate-700 px-3 py-1 text-sm" onClick={() => navigate("/signer")} type="button">
+
+        <button
+          className="rounded border border-slate-700 px-3 py-1 text-sm"
+          onClick={() => navigate("/signer")}
+          type="button"
+        >
           Back
         </button>
+
+        {/* Submit button – enabled only when all regions are signed */}
+        <button
+          className={`ml-auto rounded px-4 py-1.5 text-sm font-medium transition-colors ${
+            canSubmit
+              ? "bg-emerald-600 text-white hover:bg-emerald-500 active:bg-emerald-700"
+              : "cursor-not-allowed bg-slate-700 text-slate-500"
+          }`}
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
+          title={
+            canSubmit
+              ? "Submit signed document to the external system"
+              : `Sign all ${assignedTotal} region${assignedTotal !== 1 ? "s" : ""} before submitting`
+          }
+          type="button"
+        >
+          {submitting ? "Submitting…" : "Submit"}
+        </button>
       </div>
-      {fileUrl ? <PdfPageCanvas fileUrl={fileUrl} pageNumber={pageNumber} onPageViewport={setViewport} overlays={overlays} /> : null}
-      <p className="mt-3 text-sm text-slate-400">Only highlighted green boxes are signable. Signed boxes are locked.</p>
+
+      {fileUrl ? (
+        <PdfPageCanvas
+          fileUrl={fileUrl}
+          pageNumber={pageNumber}
+          onPageViewport={setViewport}
+          overlays={overlays}
+        />
+      ) : null}
+
+      <p className="mt-3 text-sm text-slate-400">
+        Green regions: click to sign.&nbsp; Amber regions: double-click to replace your signature.
+      </p>
 
       {selectedRegion ? (
         <SignatureModal
@@ -122,7 +235,8 @@ export default function SigningPage() {
           onSubmit={submitSignature}
         />
       ) : null}
-      {saving ? <p className="mt-2 text-sm text-slate-300">Applying signature...</p> : null}
+
+      {saving ? <p className="mt-2 text-sm text-slate-300">Applying signature…</p> : null}
     </AppShell>
   );
 }

@@ -19,8 +19,8 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
 
   const stageSize = useMemo(
     () => ({
-      width: Math.max(300, Math.round(region.width * 680)),
-      height: Math.max(120, Math.round(region.height * 680))
+      width: Math.min(1200, Math.max(700, Math.round(region.width * 1800))),
+      height: Math.min(500, Math.max(260, Math.round(region.height * 1800)))
     }),
     [region]
   );
@@ -62,7 +62,7 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
         setLocalError("Draw your signature first.");
         return;
       }
-      const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2 });
+      const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 4 });
       if (!dataUrl) return;
       setLocalError("");
       onSubmit({
@@ -97,7 +97,7 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 p-4">
+      <div className="w-full max-w-4xl rounded-2xl border border-slate-700 bg-slate-900 p-4">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="title-font text-xl text-sky-100">Sign Region</h2>
           <button className="text-slate-400 hover:text-white" onClick={onClose} type="button">Close</button>
@@ -119,7 +119,7 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
         </div>
 
         {mode === "draw" && (
-          <div className="rounded-lg border border-slate-700 bg-slate-100 p-2">
+          <div className="overflow-auto rounded-lg border border-slate-700 bg-slate-100 p-2">
             <Stage
               ref={stageRef}
               width={stageSize.width}
@@ -133,7 +133,7 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
             >
               <Layer>
                 {lines.map((line, idx) => (
-                  <Line key={idx} points={line.points} stroke="#0f172a" strokeWidth={3} tension={0.4} lineCap="round" />
+                  <Line key={idx} points={line.points} stroke="#0f172a" strokeWidth={4} tension={0.4} lineCap="round" />
                 ))}
               </Layer>
             </Stage>

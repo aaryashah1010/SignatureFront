@@ -32,15 +32,29 @@ export default function RegionSelectionPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [docRes, signerRes, fileRes] = await Promise.all([
+        // Fetch document and PDF in parallel, then resolve the correct signer list.
+        const [docRes, fileRes] = await Promise.all([
           api.get(`/documents/${id}`),
-          api.get("/users/signers"),
           api.get(`/documents/${id}/file`, { responseType: "blob" })
         ]);
         setDocument(docRes.data);
-        setSigners(signerRes.data);
-        setSelectedSigner(signerRes.data[0]?.id || "");
         setFileUrl(URL.createObjectURL(fileRes.data));
+
+        // Fetch only the mapping-constrained signer list from the integration endpoint.
+        // If the endpoint fails entirely (e.g. network error), fall back to all local signers
+        // so the non-integration workflow still works.
+        let fetchedSigners = [];
+        try {
+          const mappedRes = await api.get(`/integration/documents/${id}/mapped-signers`);
+          fetchedSigners = mappedRes.data;
+        } catch {
+          // Only fall back when the endpoint itself is unavailable (non-integration mode).
+          const fallbackRes = await api.get("/users/signers");
+          fetchedSigners = fallbackRes.data;
+        }
+
+        setSigners(fetchedSigners);
+        setSelectedSigner(fetchedSigners[0]?.id || "");
       } catch (err) {
         setError(extractApiErrorMessage(err, "Failed to load region setup"));
       }
@@ -125,6 +139,12 @@ export default function RegionSelectionPage() {
     }
     try {
       await api.post(`/documents/${id}/regions`, { regions: newRegions.map(({ id: regionId, ...rest }) => rest) });
+      // Notify CpaDesk the document is prepared (ESign flow). Non-critical — ignore errors.
+      try {
+        await api.post(`/integration/documents/${id}/notify-prepared`);
+      } catch {
+        // not an ESign document or endpoint unavailable — continue normally
+      }
       navigate("/admin");
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to save regions"));
@@ -135,18 +155,24 @@ export default function RegionSelectionPage() {
     <AppShell title="Region Selection">
       {error ? <p className="mb-3 text-red-400">{error}</p> : null}
       <div className="mb-4 flex flex-wrap gap-3">
-        <label className="text-sm text-slate-300">
-          Signer
-          <select
-            className="ml-2 rounded border border-slate-700 bg-slate-900 px-2 py-1"
-            value={selectedSigner}
-            onChange={(e) => setSelectedSigner(e.target.value)}
-          >
-            {signers.map((signer) => (
-              <option key={signer.id} value={signer.id}>{signer.name}</option>
-            ))}
-          </select>
-        </label>
+        {signers.length === 1 ? (
+          <span className="text-sm text-slate-300">
+            Signer: <strong className="text-white">{signers[0].name}</strong>
+          </span>
+        ) : (
+          <label className="text-sm text-slate-300">
+            Signer
+            <select
+              className="ml-2 rounded border border-slate-700 bg-slate-900 px-2 py-1"
+              value={selectedSigner}
+              onChange={(e) => setSelectedSigner(e.target.value)}
+            >
+              {signers.map((signer) => (
+                <option key={signer.id} value={signer.id}>{signer.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="text-sm text-slate-300">
           Page
           <select

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import DocumentPreviewPage from "./pages/DocumentPreviewPage";
+import LaunchPage from "./pages/LaunchPage";
 import LoginPage from "./pages/LoginPage";
 import RegionSelectionPage from "./pages/RegionSelectionPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -15,6 +16,9 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Public integration entry point – no auth required */}
+      <Route path="/launch" element={<LaunchPage />} />
+
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
 

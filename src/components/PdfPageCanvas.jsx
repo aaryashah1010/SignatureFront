@@ -45,6 +45,7 @@ export default function PdfPageCanvas({ fileUrl, pageNumber, onPageViewport, ove
           key={overlay.id}
           className={`absolute border-2 ${overlay.className || "border-emerald-500 bg-emerald-500/20"} cursor-pointer`}
           onClick={overlay.onClick}
+          onDoubleClick={overlay.onDoubleClick}
           style={{
             left: `${overlay.x}px`,
             top: `${overlay.y}px`,
