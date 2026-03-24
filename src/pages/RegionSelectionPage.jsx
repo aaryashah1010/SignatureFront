@@ -54,7 +54,9 @@ export default function RegionSelectionPage() {
         }
 
         setSigners(fetchedSigners);
-        setSelectedSigner(fetchedSigners[0]?.id || "");
+        // Auto-select when there is exactly one signer (ESign flow) so drawing
+        // is enabled immediately without requiring the user to pick from a dropdown.
+        setSelectedSigner(fetchedSigners.length === 1 ? fetchedSigners[0].id : "");
       } catch (err) {
         setError(extractApiErrorMessage(err, "Failed to load region setup"));
       }
@@ -167,6 +169,7 @@ export default function RegionSelectionPage() {
               value={selectedSigner}
               onChange={(e) => setSelectedSigner(e.target.value)}
             >
+              <option value="">— Select signer —</option>
               {signers.map((signer) => (
                 <option key={signer.id} value={signer.id}>{signer.name}</option>
               ))}
