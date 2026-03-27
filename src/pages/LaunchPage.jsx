@@ -2,11 +2,11 @@
  * LaunchPage – integration entry point.
  *
  * The external software redirects the user to:
- *   /launch?token=<HMAC-signed-JWT>
+ *   /lof?token=<HMAC-signed-JWT>
  *
  * This page:
  *  1. Reads the `token` query parameter.
- *  2. Posts it to POST /api/integration/launch.
+ *  2. Sends it to GET /api/integration/launch.
  *  3. Stores the returned JWT + user in Zustand / localStorage.
  *  4. Navigates to the `next_route` the backend returns (role-specific deep link).
  *
@@ -39,7 +39,10 @@ export default function LaunchPage() {
     async function doLaunch() {
       try {
         setStatus("Authenticating with external software…");
-        const { data } = await api.post("/integration/launch", { token }, { timeout: 45000 });
+        const { data } = await api.get("/integration/launch", {
+          params: { token },
+          timeout: 45000
+        });
 
         if (cancelled) return;
 

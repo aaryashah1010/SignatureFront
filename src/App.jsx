@@ -17,6 +17,7 @@ export default function App() {
   return (
     <Routes>
       {/* Public integration entry point – no auth required */}
+      <Route path="/lof" element={<LaunchPage />} />
       <Route path="/launch" element={<LaunchPage />} />
 
       <Route path="/login" element={<LoginPage />} />
