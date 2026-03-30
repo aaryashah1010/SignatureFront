@@ -29,6 +29,7 @@ export default function LaunchPage() {
 
   useEffect(() => {
     const token = searchParams.get("token");
+    const role = searchParams.get("role") || "";
     if (!token) {
       setError("No launch token provided. Please use the link supplied by your external software.");
       return;
@@ -40,7 +41,7 @@ export default function LaunchPage() {
       try {
         setStatus("Authenticating with external software…");
         const { data } = await api.get("/integration/launch", {
-          params: { token },
+          params: { token, role },
           timeout: 45000
         });
 
