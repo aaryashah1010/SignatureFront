@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
+import PdfDocumentScroller from "../components/PdfDocumentScroller";
 import PdfPageCanvas from "../components/PdfPageCanvas";
 import SignatureModal from "../components/SignatureModal";
 import { extractApiErrorMessage } from "../lib/errorMessage";
@@ -23,13 +24,18 @@ export default function SigningPage() {
   const { user } = useAuthStore();
   const [document, setDocument] = useState(null);
   const [fileUrl, setFileUrl] = useState("");
-  const [pageNumber, setPageNumber] = useState(1);
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [activePage, setActivePage] = useState(1);
+  // Each rendered PdfPageCanvas reports its own pixel viewport; keep them per-page
+  // so we denormalize region rectangles against the correct page size.
+  const [pageViewports, setPageViewports] = useState({});
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  // Region the user just jumped to via "Next Sign" — gets a brief highlight pulse.
+  const [highlightedRegionId, setHighlightedRegionId] = useState(null);
+  const scrollerRef = useRef(null);
 
   const load = async () => {
     try {
@@ -40,8 +46,10 @@ export default function SigningPage() {
       setDocument(docRes.data);
       if (fileUrl) URL.revokeObjectURL(fileUrl);
       setFileUrl(URL.createObjectURL(fileRes.data));
+      return docRes.data;
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to load signing document"));
+      return null;
     }
   };
 
@@ -63,20 +71,76 @@ export default function SigningPage() {
   const assignedSigned = signerRegions.filter((r) => r.signed).length;
   const canSubmit = assignedTotal > 0 && assignedSigned === assignedTotal;
 
-  const overlays = useMemo(
-    () =>
-      signerRegions
-        .filter((r) => r.page_number === pageNumber)
-        .map((r) => ({
-          ...denormalize(r, viewport),
-          className: r.signed
-            ? "border-amber-500 bg-amber-500/20"
-            : "border-emerald-500 bg-emerald-500/20",
+  const setViewportForPage = useCallback((n, vp) => {
+    setPageViewports((prev) => {
+      const existing = prev[n];
+      if (existing && existing.width === vp.width && existing.height === vp.height) {
+        return prev;
+      }
+      return { ...prev, [n]: vp };
+    });
+  }, []);
+
+  const buildOverlaysForPage = (n) => {
+    const vp = pageViewports[n];
+    if (!vp) return [];
+    return signerRegions
+      .filter((r) => r.page_number === n)
+      .map((r) => {
+        const baseClass = r.signed
+          ? "border-amber-500 bg-amber-500/20"
+          : "border-emerald-500 bg-emerald-500/20";
+        // Bright ring + pulse + extra shadow so the targeted region is impossible
+        // to miss after Next Sign jumps to it.
+        const pulseClass =
+          r.id === highlightedRegionId
+            ? " ring-8 ring-cyan-400 shadow-[0_0_30px_8px_rgba(34,211,238,0.6)] animate-pulse z-10"
+            : "";
+        return {
+          ...denormalize(r, vp),
+          className: baseClass + pulseClass,
           onClick: r.signed ? undefined : () => setSelectedRegion(r),
           onDoubleClick: r.signed ? () => setSelectedRegion(r) : undefined
-        })),
-    [signerRegions, pageNumber, viewport]
-  );
+        };
+      });
+  };
+
+  // ── "Next Sign" jump ──────────────────────────────────────────────────────
+  // Always pick the top-most unsigned region in reading order (page, y, x),
+  // regardless of where the user is currently scrolled.
+  const orderRegions = (regions) =>
+    [...regions]
+      // Treat anything other than strict `true` as unsigned — defensive against
+      // the API ever returning falsy stand-ins like null / undefined / 0.
+      .filter((r) => r.signed !== true)
+      .sort((a, b) => {
+        if (a.page_number !== b.page_number) return a.page_number - b.page_number;
+        if (a.y !== b.y) return a.y - b.y;
+        return a.x - b.x;
+      });
+
+  const unsignedRegionsOrdered = useMemo(() => orderRegions(signerRegions), [signerRegions]);
+
+  // Approximate height of the "Page N" label that sits above each canvas inside
+  // the scroller — used to offset the region's Y when computing scroll target.
+  const PAGE_LABEL_HEIGHT_PX = 24;
+
+  const jumpToRegion = (region) => {
+    if (!region) return;
+    setActivePage(region.page_number);
+    const vp = pageViewports[region.page_number];
+    // Center the region vertically in the viewport when we know the page's pixel size.
+    const centerOnPagePx = vp
+      ? PAGE_LABEL_HEIGHT_PX + region.y * vp.height + (region.height * vp.height) / 2
+      : null;
+    scrollerRef.current?.scrollToPage(region.page_number, centerOnPagePx);
+    setHighlightedRegionId(region.id);
+    setTimeout(() => {
+      setHighlightedRegionId((current) => (current === region.id ? null : current));
+    }, 3500);
+  };
+
+  const jumpToNextSign = () => jumpToRegion(unsignedRegionsOrdered[0]);
 
   const submitSignature = async (signaturePayload) => {
     if (!selectedRegion) return;
@@ -152,6 +216,8 @@ export default function SigningPage() {
     );
   }
 
+  const totalPages = document?.total_pages || 0;
+
   return (
     <AppShell title="Signing Page">
       {error ? <p className="mb-3 text-red-400">{error}</p> : null}
@@ -172,27 +238,27 @@ export default function SigningPage() {
           </span>
         )}
 
-        <label className="text-sm text-slate-300">
-          Page
-          <select
-            className="ml-2 rounded border border-slate-700 bg-slate-900 px-2 py-1"
-            value={pageNumber}
-            onChange={(e) => setPageNumber(Number(e.target.value))}
-          >
-            {Array.from({ length: document?.total_pages || 1 }).map((_, idx) => (
-              <option key={idx + 1} value={idx + 1}>
-                Page {idx + 1}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <button
           className="rounded border border-slate-700 px-3 py-1 text-sm"
           onClick={() => navigate("/signer")}
           type="button"
         >
           Back
+        </button>
+
+        <button
+          className="rounded bg-cyan-700 px-3 py-1 text-sm text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={jumpToNextSign}
+          disabled={unsignedRegionsOrdered.length === 0}
+          type="button"
+          title={
+            unsignedRegionsOrdered.length
+              ? `Jump to the next region you still need to sign (${unsignedRegionsOrdered.length} left)`
+              : "All your regions are signed"
+          }
+        >
+          Next Sign
+          {unsignedRegionsOrdered.length > 0 ? ` (${unsignedRegionsOrdered.length})` : ""}
         </button>
 
         {/* Submit button – enabled only when all regions are signed */}
@@ -215,18 +281,34 @@ export default function SigningPage() {
         </button>
       </div>
 
-      {fileUrl ? (
-        <PdfPageCanvas
-          fileUrl={fileUrl}
-          pageNumber={pageNumber}
-          onPageViewport={setViewport}
-          overlays={overlays}
+      {fileUrl && totalPages > 0 ? (
+        <PdfDocumentScroller
+          ref={scrollerRef}
+          totalPages={totalPages}
+          activePage={activePage}
+          onActivePageChange={setActivePage}
+          renderPage={(n) => (
+            <PdfPageCanvas
+              fileUrl={fileUrl}
+              pageNumber={n}
+              onPageViewport={(vp) => setViewportForPage(n, vp)}
+              overlays={buildOverlaysForPage(n)}
+              annotations={(document?.annotations || []).filter((a) => a.page_number === n)}
+              readOnlyAnnotations
+            />
+          )}
         />
       ) : null}
 
       <p className="mt-3 text-sm text-slate-400">
         Green regions: click to sign.&nbsp; Amber regions: double-click to replace your signature.
+        Scroll through the pages or use the "Go to page" box above to jump.
       </p>
+      {document?.annotations?.length ? (
+        <p className="mt-1 text-xs text-slate-500">
+          Highlights, drawings and comments above are notes from the admin to guide you.
+        </p>
+      ) : null}
 
       {selectedRegion ? (
         <SignatureModal
