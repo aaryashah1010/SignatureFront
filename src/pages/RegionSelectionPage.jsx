@@ -386,8 +386,8 @@ export default function RegionSelectionPage() {
 
   if (saved) {
     return (
-      <AppShell title="Saved">
-        <div className="mx-auto max-w-md rounded-xl border border-emerald-700 bg-emerald-900/20 p-8 text-center">
+      <AppShell title="Saved" hideHeader>
+        <div className="mx-auto mt-24 max-w-md rounded-xl border border-emerald-700 bg-emerald-900/20 p-8 text-center">
           <h2 className="mb-2 text-xl font-semibold text-emerald-300">Saved</h2>
           <p className="text-sm text-slate-400">You may close this tab now.</p>
         </div>

@@ -193,8 +193,8 @@ export default function SigningPage() {
 
   if (submitSuccess) {
     return (
-      <AppShell title="Signing Complete">
-        <div className="mx-auto max-w-md rounded-xl border border-emerald-700 bg-emerald-900/20 p-8 text-center">
+      <AppShell title="Signing Complete" hideHeader>
+        <div className="mx-auto mt-24 max-w-md rounded-xl border border-emerald-700 bg-emerald-900/20 p-8 text-center">
           <svg
             className="mx-auto mb-4 h-16 w-16 text-emerald-400"
             fill="none"
