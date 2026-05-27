@@ -181,6 +181,16 @@ export default function SigningPage() {
   };
 
   // ── Submission success screen ─────────────────────────────────────────────
+  // Integration flow: signer reached this via a launch URL; they shouldn't see
+  // the dashboard. Briefly show the thank-you, then try to close the tab.
+  // window.close() only works if the tab was opened via window.open(); when
+  // blocked, the on-screen message tells the user to close it manually.
+  useEffect(() => {
+    if (!submitSuccess) return;
+    const timer = setTimeout(() => window.close(), 1500);
+    return () => clearTimeout(timer);
+  }, [submitSuccess]);
+
   if (submitSuccess) {
     return (
       <AppShell title="Signing Complete">
@@ -199,18 +209,11 @@ export default function SigningPage() {
             />
           </svg>
           <h2 className="mb-2 text-xl font-semibold text-emerald-300">
-            Document Submitted
+            Thank you!
           </h2>
-          <p className="mb-6 text-sm text-slate-400">
-            Your signatures have been submitted and the external system has been notified.
+          <p className="text-sm text-slate-400">
+            Your signatures have been submitted. You may close this tab now.
           </p>
-          <button
-            className="rounded bg-slate-700 px-5 py-2 text-sm text-slate-200 hover:bg-slate-600"
-            onClick={() => navigate("/signer")}
-            type="button"
-          >
-            Back to Dashboard
-          </button>
         </div>
       </AppShell>
     );

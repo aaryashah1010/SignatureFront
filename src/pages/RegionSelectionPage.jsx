@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
 import PdfDocumentScroller from "../components/PdfDocumentScroller";
@@ -44,7 +44,6 @@ function strokeBounds(strokes) {
 
 export default function RegionSelectionPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [document, setDocument] = useState(null);
   const [signers, setSigners] = useState([]);
   const [selectedSigner, setSelectedSigner] = useState("");
@@ -69,6 +68,10 @@ export default function RegionSelectionPage() {
 
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Integration flow: admin lands here via a launch URL and shouldn't see the
+  // dashboard afterwards. On successful save we flip this and try to close the
+  // tab; if the browser blocks the close, the screen below tells them to close it.
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -319,7 +322,11 @@ export default function RegionSelectionPage() {
           // not an ESign document or endpoint unavailable — continue normally
         }
       }
-      navigate("/admin");
+      setSaved(true);
+      // Defer so React renders the completion screen before the browser
+      // potentially closes the tab. window.close() is silently ignored if the
+      // tab wasn't opened via window.open() — the screen below is the fallback.
+      setTimeout(() => window.close(), 150);
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to save"));
     } finally {
@@ -376,6 +383,17 @@ export default function RegionSelectionPage() {
   };
 
   const totalPages = document?.total_pages || 0;
+
+  if (saved) {
+    return (
+      <AppShell title="Saved">
+        <div className="mx-auto max-w-md rounded-xl border border-emerald-700 bg-emerald-900/20 p-8 text-center">
+          <h2 className="mb-2 text-xl font-semibold text-emerald-300">Saved</h2>
+          <p className="text-sm text-slate-400">You may close this tab now.</p>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Region Selection">
