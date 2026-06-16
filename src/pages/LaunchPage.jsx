@@ -30,6 +30,10 @@ export default function LaunchPage() {
   useEffect(() => {
     const token = searchParams.get("token");
     const role = searchParams.get("role") || "";
+    // loginDetailId identifies WHICH signer is launching (3-tier flow). It must be
+    // forwarded to the backend; without it the backend falls back to the parent
+    // client id and the signer resolves to a user with no assigned regions (403).
+    const loginDetailId = searchParams.get("loginDetailId");
     if (!token) {
       setError("No launch token provided. Please use the link supplied by your external software.");
       return;
@@ -40,8 +44,12 @@ export default function LaunchPage() {
     async function doLaunch() {
       try {
         setStatus("Authenticating with external software…");
+        const params = { token, role };
+        if (loginDetailId) {
+          params.loginDetailId = loginDetailId;
+        }
         const { data } = await api.get("/integration/launch", {
-          params: { token, role },
+          params,
           timeout: 45000
         });
 
