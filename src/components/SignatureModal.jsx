@@ -7,7 +7,7 @@ const FONT_OPTIONS = [
   { value: "formal", label: "Formal" }
 ];
 
-export default function SignatureModal({ region, onClose, onSubmit }) {
+export default function SignatureModal({ region, onClose, onSubmit, showRemember = false }) {
   const [mode, setMode] = useState("draw");
   const [typedName, setTypedName] = useState("");
   const [typedFont, setTypedFont] = useState("classic");
@@ -15,6 +15,7 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
   const [localError, setLocalError] = useState("");
   const [lines, setLines] = useState([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [remember, setRemember] = useState(false);
   const stageRef = useRef(null);
 
   const stageSize = useMemo(
@@ -67,7 +68,8 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
       setLocalError("");
       onSubmit({
         method: "draw",
-        drawn_signature_base64: dataUrl
+        drawn_signature_base64: dataUrl,
+        remember_signature: remember
       });
       return;
     }
@@ -80,7 +82,8 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
       onSubmit({
         method: "type",
         typed_name: typedName.trim(),
-        typed_font: typedFont
+        typed_font: typedFont,
+        remember_signature: remember
       });
       return;
     }
@@ -91,7 +94,8 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
     setLocalError("");
     onSubmit({
       method: "upload",
-      uploaded_signature_base64: uploadedBase64
+      uploaded_signature_base64: uploadedBase64,
+      remember_signature: remember
     });
   };
 
@@ -175,6 +179,17 @@ export default function SignatureModal({ region, onClose, onSubmit }) {
         )}
 
         {localError ? <p className="mt-3 text-sm text-red-400">{localError}</p> : null}
+
+        {showRemember ? (
+          <label className="mt-4 flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            Remember my signature for next time
+          </label>
+        ) : null}
 
         <div className="mt-6 flex justify-end gap-2">
           <button className="rounded-lg border border-slate-700 px-3 py-2" onClick={onClose} type="button">

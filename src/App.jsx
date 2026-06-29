@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AnnotateOnlyPage from "./pages/AnnotateOnlyPage";
 import DocumentPreviewPage from "./pages/DocumentPreviewPage";
 import LaunchPage from "./pages/LaunchPage";
 import LoginPage from "./pages/LoginPage";
@@ -19,6 +20,9 @@ export default function App() {
       {/* Public integration entry point – no auth required */}
       <Route path="/lof" element={<LaunchPage />} />
       <Route path="/launch" element={<LaunchPage />} />
+
+      {/* Public standalone annotate page – no auth, secured by ref + token */}
+      <Route path="/annotate" element={<AnnotateOnlyPage />} />
 
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />

@@ -336,6 +336,14 @@ export default function RegionSelectionPage() {
 
   const activeToolHint = TOOLS.find((t) => t.value === tool)?.hint || "";
 
+  // Map signer id → display name so each region box can show who it's assigned to.
+  const signerNameById = useMemo(() => {
+    const map = {};
+    for (const s of signers) map[s.id] = s.name;
+    return map;
+  }, [signers]);
+  const signerNameFor = (assignedTo) => signerNameById[assignedTo] || "Unknown signer";
+
   // ── Per-page derived values (called from renderPage) ──────────────────────
   const overlaysForPage = (n) => {
     const vp = pageViewports[n];
@@ -344,12 +352,14 @@ export default function RegionSelectionPage() {
       .filter((region) => region.page_number === n)
       .map((region) => ({
         ...denormalize(region, vp),
+        label: signerNameFor(region.assigned_to),
         className: "border-amber-500 bg-amber-500/20 pointer-events-none"
       }));
     const pending = newRegions
       .filter((region) => region.page_number === n)
       .map((region) => ({
         ...denormalize(region, vp),
+        label: signerNameFor(region.assigned_to),
         className: "border-emerald-500 bg-emerald-500/20 pointer-events-none"
       }));
     const draft =

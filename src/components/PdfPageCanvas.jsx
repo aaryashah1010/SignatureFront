@@ -255,7 +255,16 @@ export default function PdfPageCanvas({
             width: `${overlay.width}px`,
             height: `${overlay.height}px`
           }}
-        />
+        >
+          {overlay.label ? (
+            <span
+              className="pointer-events-none absolute -top-5 left-0 max-w-full truncate rounded bg-slate-900/90 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white shadow"
+              title={overlay.label}
+            >
+              {overlay.label}
+            </span>
+          ) : null}
+        </div>
       ))}
     </div>
   );

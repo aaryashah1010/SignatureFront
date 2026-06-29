@@ -29,6 +29,8 @@ export default function SigningPage() {
   // so we denormalize region rectangles against the correct page size.
   const [pageViewports, setPageViewports] = useState({});
   const [selectedRegion, setSelectedRegion] = useState(null);
+  const [applyAllOpen, setApplyAllOpen] = useState(false);
+  const [savedSignature, setSavedSignature] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -59,6 +61,20 @@ export default function SigningPage() {
       if (fileUrl) URL.revokeObjectURL(fileUrl);
     };
   }, [id]);
+
+  // Load the user's remembered signature (if any) for one-click "apply saved to all".
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get("/users/me/signature")
+      .then(({ data }) => {
+        if (!cancelled && data?.has_signature) setSavedSignature(data.signature);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Regions assigned to the current signer.
   const signerRegions = useMemo(
@@ -166,6 +182,20 @@ export default function SigningPage() {
     }
   };
 
+  const submitSignAll = async (signaturePayload) => {
+    setSaving(true);
+    setError("");
+    try {
+      await api.post(`/documents/${id}/sign-all`, signaturePayload);
+      setApplyAllOpen(false);
+      await load();
+    } catch (err) {
+      setError(extractApiErrorMessage(err, "Failed to apply signature to all regions"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
@@ -264,6 +294,28 @@ export default function SigningPage() {
           {unsignedRegionsOrdered.length > 0 ? ` (${unsignedRegionsOrdered.length})` : ""}
         </button>
 
+        <button
+          className="rounded bg-indigo-700 px-3 py-1 text-sm text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => setApplyAllOpen(true)}
+          disabled={unsignedRegionsOrdered.length === 0}
+          type="button"
+          title="Sign all your regions at once with one signature"
+        >
+          Apply to all
+        </button>
+
+        {savedSignature ? (
+          <button
+            className="rounded bg-teal-700 px-3 py-1 text-sm text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => submitSignAll({ ...savedSignature, remember_signature: false })}
+            disabled={unsignedRegionsOrdered.length === 0 || saving}
+            type="button"
+            title="Apply your saved signature to all your regions"
+          >
+            Apply saved signature to all
+          </button>
+        ) : null}
+
         {/* Submit button – enabled only when all regions are signed */}
         <button
           className={`ml-auto rounded px-4 py-1.5 text-sm font-medium transition-colors ${
@@ -318,6 +370,15 @@ export default function SigningPage() {
           region={selectedRegion}
           onClose={() => setSelectedRegion(null)}
           onSubmit={submitSignature}
+        />
+      ) : null}
+
+      {applyAllOpen ? (
+        <SignatureModal
+          region={signerRegions[0] || { width: 0.4, height: 0.12 }}
+          onClose={() => setApplyAllOpen(false)}
+          onSubmit={submitSignAll}
+          showRemember
         />
       ) : null}
 
