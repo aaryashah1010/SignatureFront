@@ -407,6 +407,12 @@ export default function RegionSelectionPage() {
 
   return (
     <AppShell title="Region Selection">
+      {saving ? (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-950/80">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-emerald-500" />
+          <p className="text-sm text-slate-300">Saving… please wait, this may take a few seconds.</p>
+        </div>
+      ) : null}
       {error ? <p className="mb-3 text-red-400">{error}</p> : null}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">

@@ -7,8 +7,8 @@ const FONT_OPTIONS = [
   { value: "formal", label: "Formal" }
 ];
 
-export default function SignatureModal({ region, onClose, onSubmit, showRemember = false }) {
-  const [mode, setMode] = useState("draw");
+export default function SignatureModal({ region, onClose, onSubmit, showRemember = false, lockedMethod = null }) {
+  const [mode, setMode] = useState(lockedMethod || "draw");
   const [typedName, setTypedName] = useState("");
   const [typedFont, setTypedFont] = useState("classic");
   const [uploadedBase64, setUploadedBase64] = useState(null);
@@ -106,21 +106,27 @@ export default function SignatureModal({ region, onClose, onSubmit, showRemember
           <h2 className="title-font text-xl text-sky-100">Sign Region</h2>
           <button className="text-slate-400 hover:text-white" onClick={onClose} type="button">Close</button>
         </div>
-        <div className="mb-4 flex gap-2">
-          {["draw", "type", "upload"].map((value) => (
-            <button
-              key={value}
-              className={`rounded-lg px-3 py-2 text-sm ${mode === value ? "bg-sky-700" : "bg-slate-800"}`}
-              onClick={() => {
-                setMode(value);
-                setLocalError("");
-              }}
-              type="button"
-            >
-              {value}
-            </button>
-          ))}
-        </div>
+        {lockedMethod ? (
+          <div className="mb-4 text-sm text-slate-400">
+            Signature method for this document: <strong className="text-sky-200">{lockedMethod}</strong>
+          </div>
+        ) : (
+          <div className="mb-4 flex gap-2">
+            {["draw", "type", "upload"].map((value) => (
+              <button
+                key={value}
+                className={`rounded-lg px-3 py-2 text-sm ${mode === value ? "bg-sky-700" : "bg-slate-800"}`}
+                onClick={() => {
+                  setMode(value);
+                  setLocalError("");
+                }}
+                type="button"
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === "draw" && (
           <div className="overflow-auto rounded-lg border border-slate-700 bg-slate-100 p-2">

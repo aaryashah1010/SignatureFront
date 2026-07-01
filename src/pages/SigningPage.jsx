@@ -31,6 +31,11 @@ export default function SigningPage() {
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState(null);
+  // #2 — one signature method locked for the whole document (draw | type | upload).
+  const [signMethod, setSignMethod] = useState(null);
+  const [methodPickerFor, setMethodPickerFor] = useState(null); // region awaiting a method choice
+  // #3 — per-box prompt offering the remembered signature.
+  const [savedPromptRegion, setSavedPromptRegion] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -115,8 +120,8 @@ export default function SigningPage() {
         return {
           ...denormalize(r, vp),
           className: baseClass + pulseClass,
-          onClick: r.signed ? undefined : () => setSelectedRegion(r),
-          onDoubleClick: r.signed ? () => setSelectedRegion(r) : undefined
+          onClick: r.signed ? undefined : () => handleBoxClick(r),
+          onDoubleClick: r.signed ? () => handleBoxClick(r) : undefined
         };
       });
   };
@@ -194,6 +199,32 @@ export default function SigningPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Clicking a box: if the user has a remembered signature, offer to apply it to all
+  // boxes first (#3); otherwise go straight to manual signing (#2 method lock).
+  const handleBoxClick = (region) => {
+    if (savedSignature) {
+      setSavedPromptRegion(region);
+    } else {
+      startManualSign(region);
+    }
+  };
+
+  // Manual signing: pick the document's signature method once (#2), then open the modal.
+  const startManualSign = (region) => {
+    if (!signMethod) {
+      setMethodPickerFor(region);
+    } else {
+      setSelectedRegion(region);
+    }
+  };
+
+  const chooseMethod = (method) => {
+    setSignMethod(method);
+    const region = methodPickerFor;
+    setMethodPickerFor(null);
+    if (region) setSelectedRegion(region);
   };
 
   const handleSubmit = async () => {
@@ -370,6 +401,7 @@ export default function SigningPage() {
           region={selectedRegion}
           onClose={() => setSelectedRegion(null)}
           onSubmit={submitSignature}
+          lockedMethod={signMethod}
         />
       ) : null}
 
@@ -379,7 +411,78 @@ export default function SigningPage() {
           onClose={() => setApplyAllOpen(false)}
           onSubmit={submitSignAll}
           showRemember
+          lockedMethod={signMethod}
         />
+      ) : null}
+
+      {/* #2 — choose the signature method once for the whole document */}
+      {methodPickerFor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+            <h2 className="mb-4 text-lg font-semibold text-sky-100">How do you want to sign this document?</h2>
+            <p className="mb-5 text-sm text-slate-400">You can use only this method for every signature in this document.</p>
+            <div className="flex justify-center gap-3">
+              {["draw", "type", "upload"].map((m) => (
+                <button
+                  key={m}
+                  className="rounded-lg bg-sky-700 px-4 py-2 text-sm capitalize hover:bg-sky-600"
+                  onClick={() => chooseMethod(m)}
+                  type="button"
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <button className="mt-5 text-xs text-slate-400 hover:text-slate-200" onClick={() => setMethodPickerFor(null)} type="button">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* #3 — offer the remembered signature when a box is clicked */}
+      {savedPromptRegion ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+            <h2 className="mb-3 text-lg font-semibold text-sky-100">Use your saved signature?</h2>
+            <div className="mb-4 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-100 p-3">
+              {savedSignature?.method === "type" ? (
+                <span className="text-2xl text-slate-900">{savedSignature.typed_name}</span>
+              ) : (
+                <img
+                  src={savedSignature?.drawn_signature_base64 || savedSignature?.uploaded_signature_base64}
+                  alt="Saved signature"
+                  className="max-h-24"
+                />
+              )}
+            </div>
+            <p className="mb-5 text-sm text-slate-400">Apply this signature to all your boxes in this document?</p>
+            <div className="flex justify-center gap-3">
+              <button
+                className="rounded-lg bg-emerald-700 px-4 py-2 text-sm hover:bg-emerald-600 disabled:opacity-50"
+                onClick={() => {
+                  setSavedPromptRegion(null);
+                  submitSignAll({ ...savedSignature, remember_signature: false });
+                }}
+                disabled={saving}
+                type="button"
+              >
+                Yes, apply to all
+              </button>
+              <button
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm hover:border-sky-500"
+                onClick={() => {
+                  const region = savedPromptRegion;
+                  setSavedPromptRegion(null);
+                  startManualSign(region);
+                }}
+                type="button"
+              >
+                No, sign myself
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {saving ? <p className="mt-2 text-sm text-slate-300">Applying signature…</p> : null}
