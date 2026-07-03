@@ -7,7 +7,15 @@ const FONT_OPTIONS = [
   { value: "formal", label: "Formal" }
 ];
 
-export default function SignatureModal({ region, onClose, onSubmit, showRemember = false, lockedMethod = null }) {
+export default function SignatureModal({
+  region,
+  onClose,
+  onSubmit,
+  onApplyAll = null,
+  onRemove = null,
+  showRemember = true,
+  lockedMethod = null
+}) {
   const [mode, setMode] = useState(lockedMethod || "draw");
   const [typedName, setTypedName] = useState("");
   const [typedFont, setTypedFont] = useState("classic");
@@ -57,46 +65,42 @@ export default function SignatureModal({ region, onClose, onSubmit, showRemember
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = () => {
+  // Build the signature payload from the current tab, or null (+ error) if incomplete.
+  const buildPayload = () => {
     if (mode === "draw") {
       if (!lines.length) {
         setLocalError("Draw your signature first.");
-        return;
+        return null;
       }
       const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 4 });
-      if (!dataUrl) return;
+      if (!dataUrl) return null;
       setLocalError("");
-      onSubmit({
-        method: "draw",
-        drawn_signature_base64: dataUrl,
-        remember_signature: remember
-      });
-      return;
+      return { method: "draw", drawn_signature_base64: dataUrl, remember_signature: remember };
     }
     if (mode === "type") {
       if (!typedName.trim()) {
         setLocalError("Type your signature first.");
-        return;
+        return null;
       }
       setLocalError("");
-      onSubmit({
-        method: "type",
-        typed_name: typedName.trim(),
-        typed_font: typedFont,
-        remember_signature: remember
-      });
-      return;
+      return { method: "type", typed_name: typedName.trim(), typed_font: typedFont, remember_signature: remember };
     }
     if (!uploadedBase64) {
       setLocalError("Upload a signature image first.");
-      return;
+      return null;
     }
     setLocalError("");
-    onSubmit({
-      method: "upload",
-      uploaded_signature_base64: uploadedBase64,
-      remember_signature: remember
-    });
+    return { method: "upload", uploaded_signature_base64: uploadedBase64, remember_signature: remember };
+  };
+
+  const handleSubmit = () => {
+    const payload = buildPayload();
+    if (payload) onSubmit(payload);
+  };
+
+  const handleApplyAll = () => {
+    const payload = buildPayload();
+    if (payload && onApplyAll) onApplyAll(payload);
   };
 
   return (
@@ -197,10 +201,24 @@ export default function SignatureModal({ region, onClose, onSubmit, showRemember
           </label>
         ) : null}
 
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+          {onRemove ? (
+            <button
+              className="mr-auto rounded-lg border border-red-700 px-3 py-2 text-sm text-red-300 hover:bg-red-900/40"
+              onClick={onRemove}
+              type="button"
+            >
+              Remove Signature
+            </button>
+          ) : null}
           <button className="rounded-lg border border-slate-700 px-3 py-2" onClick={onClose} type="button">
             Cancel
           </button>
+          {onApplyAll ? (
+            <button className="rounded-lg bg-indigo-700 px-3 py-2 hover:bg-indigo-600" onClick={handleApplyAll} type="button">
+              Apply to all
+            </button>
+          ) : null}
           <button className="rounded-lg bg-emerald-700 px-3 py-2" onClick={handleSubmit} type="button">
             Apply Signature
           </button>

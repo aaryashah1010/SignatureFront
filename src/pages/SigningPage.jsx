@@ -121,7 +121,7 @@ export default function SigningPage() {
           ...denormalize(r, vp),
           className: baseClass + pulseClass,
           onClick: r.signed ? undefined : () => handleBoxClick(r),
-          onDoubleClick: r.signed ? () => handleBoxClick(r) : undefined
+          onDoubleClick: r.signed ? () => setSelectedRegion(r) : undefined
         };
       });
   };
@@ -182,6 +182,20 @@ export default function SigningPage() {
       await load();
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to sign region"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unsignRegion = async (region) => {
+    setSelectedRegion(null);
+    setSaving(true);
+    setError("");
+    try {
+      await api.post(`/documents/${id}/regions/${region.id}/unsign`);
+      await load();
+    } catch (err) {
+      setError(extractApiErrorMessage(err, "Failed to remove signature"));
     } finally {
       setSaving(false);
     }
@@ -401,6 +415,11 @@ export default function SigningPage() {
           region={selectedRegion}
           onClose={() => setSelectedRegion(null)}
           onSubmit={submitSignature}
+          onApplyAll={(payload) => {
+            setSelectedRegion(null);
+            submitSignAll(payload);
+          }}
+          onRemove={selectedRegion.signed ? () => unsignRegion(selectedRegion) : null}
           lockedMethod={signMethod}
         />
       ) : null}
