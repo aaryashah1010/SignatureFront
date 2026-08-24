@@ -29,7 +29,6 @@ export default function SigningPage() {
   // so we denormalize region rectangles against the correct page size.
   const [pageViewports, setPageViewports] = useState({});
   const [selectedRegion, setSelectedRegion] = useState(null);
-  const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState(null);
   // #2 — one signature method locked for the whole document (draw | type | upload).
   const [signMethod, setSignMethod] = useState(null);
@@ -67,18 +66,20 @@ export default function SigningPage() {
     };
   }, [id]);
 
-  // Load the user's remembered signature (if any) for one-click "apply saved to all".
+  // Load the user's remembered signature. Called on mount AND after every sign, so a
+  // signature the user just chose to "remember" becomes usable immediately on the
+  // remaining boxes of THIS same document (not only on the next document).
+  const refreshSavedSignature = async () => {
+    try {
+      const { data } = await api.get("/users/me/signature");
+      if (data?.has_signature) setSavedSignature(data.signature);
+    } catch {
+      // ignore — remembered signature is optional
+    }
+  };
+
   useEffect(() => {
-    let cancelled = false;
-    api
-      .get("/users/me/signature")
-      .then(({ data }) => {
-        if (!cancelled && data?.has_signature) setSavedSignature(data.signature);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+    refreshSavedSignature();
   }, []);
 
   // Regions assigned to the current signer.
@@ -180,6 +181,7 @@ export default function SigningPage() {
       });
       setSelectedRegion(null);
       await load();
+      await refreshSavedSignature();
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to sign region"));
     } finally {
@@ -206,8 +208,8 @@ export default function SigningPage() {
     setError("");
     try {
       await api.post(`/documents/${id}/sign-all`, signaturePayload);
-      setApplyAllOpen(false);
       await load();
+      await refreshSavedSignature();
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to apply signature to all regions"));
     } finally {
@@ -339,16 +341,6 @@ export default function SigningPage() {
           {unsignedRegionsOrdered.length > 0 ? ` (${unsignedRegionsOrdered.length})` : ""}
         </button>
 
-        <button
-          className="rounded bg-indigo-700 px-3 py-1 text-sm text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => setApplyAllOpen(true)}
-          disabled={unsignedRegionsOrdered.length === 0}
-          type="button"
-          title="Sign all your regions at once with one signature"
-        >
-          Apply to all
-        </button>
-
         {savedSignature ? (
           <button
             className="rounded bg-teal-700 px-3 py-1 text-sm text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -420,16 +412,6 @@ export default function SigningPage() {
             submitSignAll(payload);
           }}
           onRemove={selectedRegion.signed ? () => unsignRegion(selectedRegion) : null}
-          lockedMethod={signMethod}
-        />
-      ) : null}
-
-      {applyAllOpen ? (
-        <SignatureModal
-          region={signerRegions[0] || { width: 0.4, height: 0.12 }}
-          onClose={() => setApplyAllOpen(false)}
-          onSubmit={submitSignAll}
-          showRemember
           lockedMethod={signMethod}
         />
       ) : null}
