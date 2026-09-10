@@ -35,6 +35,9 @@ export default function SigningPage() {
   const [methodPickerFor, setMethodPickerFor] = useState(null); // region awaiting a method choice
   // #3 — per-box prompt offering the remembered signature.
   const [savedPromptRegion, setSavedPromptRegion] = useState(null);
+  // Standalone "View Signature" toolbar button — preview the remembered signature
+  // without needing a target box (unlike the per-box prompt above).
+  const [viewSignatureOpen, setViewSignatureOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -344,12 +347,12 @@ export default function SigningPage() {
         {savedSignature ? (
           <button
             className="rounded bg-teal-700 px-3 py-1 text-sm text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => submitSignAll({ ...savedSignature, remember_signature: false })}
-            disabled={unsignedRegionsOrdered.length === 0 || saving}
+            onClick={() => setViewSignatureOpen(true)}
+            disabled={saving}
             type="button"
-            title="Apply your saved signature to all your regions"
+            title="View your remembered signature"
           >
-            Apply saved signature to all
+            View Signature
           </button>
         ) : null}
 
@@ -480,6 +483,54 @@ export default function SigningPage() {
                 type="button"
               >
                 No, sign myself
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Standalone "View Signature" — preview the remembered signature; only offers
+          Apply-to-all when there is at least one unsigned box to apply it to. */}
+      {viewSignatureOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+            <h2 className="mb-3 text-lg font-semibold text-sky-100">Your Saved Signature</h2>
+            <div className="mb-4 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-100 p-3">
+              {savedSignature?.method === "type" ? (
+                <span className="text-2xl text-slate-900">{savedSignature.typed_name}</span>
+              ) : (
+                <img
+                  src={savedSignature?.drawn_signature_base64 || savedSignature?.uploaded_signature_base64}
+                  alt="Saved signature"
+                  className="max-h-24"
+                />
+              )}
+            </div>
+            <p className="mb-5 text-sm text-slate-400">
+              {unsignedRegionsOrdered.length > 0
+                ? "Apply this signature to all your remaining boxes in this document?"
+                : "All your regions in this document are already signed."}
+            </p>
+            <div className="flex justify-center gap-3">
+              {unsignedRegionsOrdered.length > 0 ? (
+                <button
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm hover:bg-emerald-600 disabled:opacity-50"
+                  onClick={() => {
+                    setViewSignatureOpen(false);
+                    submitSignAll({ ...savedSignature, remember_signature: false });
+                  }}
+                  disabled={saving}
+                  type="button"
+                >
+                  Apply to all
+                </button>
+              ) : null}
+              <button
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm hover:border-sky-500"
+                onClick={() => setViewSignatureOpen(false)}
+                type="button"
+              >
+                Close
               </button>
             </div>
           </div>
