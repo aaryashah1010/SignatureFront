@@ -206,22 +206,33 @@ export default function SigningPage() {
     }
   };
 
-  const submitSignAll = async (signaturePayload) => {
+  // Apply the remembered signature to ONE specific box — no bulk/apply-to-all
+  // anywhere; the signer decides per box whether to reuse their saved signature.
+  const applySavedToRegion = async (region) => {
     setSaving(true);
     setError("");
     try {
-      await api.post(`/documents/${id}/sign-all`, signaturePayload);
+      await api.post(`/documents/${id}/sign`, {
+        region_id: region.id,
+        method: savedSignature.method,
+        page_number: region.page_number,
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+        ...savedSignature,
+        remember_signature: false
+      });
       await load();
-      await refreshSavedSignature();
     } catch (err) {
-      setError(extractApiErrorMessage(err, "Failed to apply signature to all regions"));
+      setError(extractApiErrorMessage(err, "Failed to apply signature"));
     } finally {
       setSaving(false);
     }
   };
 
-  // Clicking a box: if the user has a remembered signature, offer to apply it to all
-  // boxes first (#3); otherwise go straight to manual signing (#2 method lock).
+  // Clicking a box: if the user has a remembered signature, ask per-box whether to
+  // reuse it or sign this one manually; otherwise go straight to manual signing.
   const handleBoxClick = (region) => {
     if (savedSignature) {
       setSavedPromptRegion(region);
@@ -440,11 +451,12 @@ export default function SigningPage() {
         </div>
       ) : null}
 
-      {/* #3 — offer the remembered signature when a box is clicked */}
+      {/* Per-box prompt: use the remembered signature for THIS box, or sign it manually.
+          No bulk apply anywhere — every box is an individual choice. */}
       {savedPromptRegion ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
-            <h2 className="mb-3 text-lg font-semibold text-sky-100">Use your saved signature?</h2>
+            <h2 className="mb-3 text-lg font-semibold text-sky-100">Use your saved signature for this box?</h2>
             <div className="mb-4 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-100 p-3">
               {savedSignature?.method === "type" ? (
                 <span className="text-2xl text-slate-900">{savedSignature.typed_name}</span>
@@ -456,18 +468,18 @@ export default function SigningPage() {
                 />
               )}
             </div>
-            <p className="mb-5 text-sm text-slate-400">Apply this signature to all your boxes in this document?</p>
             <div className="flex justify-center gap-3">
               <button
                 className="rounded-lg bg-emerald-700 px-4 py-2 text-sm hover:bg-emerald-600 disabled:opacity-50"
                 onClick={() => {
+                  const region = savedPromptRegion;
                   setSavedPromptRegion(null);
-                  submitSignAll({ ...savedSignature, remember_signature: false });
+                  applySavedToRegion(region);
                 }}
                 disabled={saving}
                 type="button"
               >
-                Yes, apply to all
+                Use this signature
               </button>
               <button
                 className="rounded-lg border border-slate-600 px-4 py-2 text-sm hover:border-sky-500"
@@ -478,15 +490,15 @@ export default function SigningPage() {
                 }}
                 type="button"
               >
-                No, sign myself
+                Sign it myself
               </button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {/* Standalone "View Signature" — preview the remembered signature; only offers
-          Apply-to-all when there is at least one unsigned box to apply it to. */}
+      {/* Standalone "View Signature" — pure preview of the remembered signature.
+          No action here either; to use it, click a box and choose "Use this signature". */}
       {viewSignatureOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
@@ -503,24 +515,9 @@ export default function SigningPage() {
               )}
             </div>
             <p className="mb-5 text-sm text-slate-400">
-              {unsignedRegionsOrdered.length > 0
-                ? "Apply this signature to all your remaining boxes in this document?"
-                : "All your regions in this document are already signed."}
+              Click a box on the document to use this signature there, or sign it yourself.
             </p>
             <div className="flex justify-center gap-3">
-              {unsignedRegionsOrdered.length > 0 ? (
-                <button
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm hover:bg-emerald-600 disabled:opacity-50"
-                  onClick={() => {
-                    setViewSignatureOpen(false);
-                    submitSignAll({ ...savedSignature, remember_signature: false });
-                  }}
-                  disabled={saving}
-                  type="button"
-                >
-                  Apply to all
-                </button>
-              ) : null}
               <button
                 className="rounded-lg border border-slate-600 px-4 py-2 text-sm hover:border-sky-500"
                 onClick={() => setViewSignatureOpen(false)}
