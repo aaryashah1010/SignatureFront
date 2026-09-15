@@ -410,10 +410,6 @@ export default function SigningPage() {
           region={selectedRegion}
           onClose={() => setSelectedRegion(null)}
           onSubmit={submitSignature}
-          onApplyAll={(payload) => {
-            setSelectedRegion(null);
-            submitSignAll(payload);
-          }}
           onRemove={selectedRegion.signed ? () => unsignRegion(selectedRegion) : null}
           lockedMethod={signMethod}
         />

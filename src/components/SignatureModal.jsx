@@ -11,7 +11,6 @@ export default function SignatureModal({
   region,
   onClose,
   onSubmit,
-  onApplyAll = null,
   onRemove = null,
   showRemember = true,
   lockedMethod = null
@@ -96,11 +95,6 @@ export default function SignatureModal({
   const handleSubmit = () => {
     const payload = buildPayload();
     if (payload) onSubmit(payload);
-  };
-
-  const handleApplyAll = () => {
-    const payload = buildPayload();
-    if (payload && onApplyAll) onApplyAll(payload);
   };
 
   return (
@@ -214,11 +208,6 @@ export default function SignatureModal({
           <button className="rounded-lg border border-slate-700 px-3 py-2" onClick={onClose} type="button">
             Cancel
           </button>
-          {onApplyAll ? (
-            <button className="rounded-lg bg-indigo-700 px-3 py-2 hover:bg-indigo-600" onClick={handleApplyAll} type="button">
-              Apply to all
-            </button>
-          ) : null}
           <button className="rounded-lg bg-emerald-700 px-3 py-2" onClick={handleSubmit} type="button">
             Apply Signature
           </button>
