@@ -1,14 +1,24 @@
 import { useState } from "react";
 
-export default function AppShell({ title, children, hideHeader = false }) {
+export default function AppShell({ title, children, hideHeader = false, onCancel = null }) {
   const [closedHint, setClosedHint] = useState(false);
 
-  const handleCancel = () => {
-    // These screens are opened via the CPA launch (window.open), so closing the
-    // tab is the right exit. window.close() is silently ignored if the tab wasn't
-    // opened programmatically — the hint below tells the user to close it manually.
+  // These screens are opened via the CPA launch (window.open), so closing the
+  // tab is the right exit. window.close() is silently ignored if the tab wasn't
+  // opened programmatically — the hint below tells the user to close it manually.
+  const performClose = () => {
     window.close();
     setClosedHint(true);
+  };
+
+  const handleCancel = () => {
+    // Pages that need to confirm/discard unsaved work before closing (e.g. the
+    // signing page) pass their own onCancel and decide when to call performClose.
+    if (onCancel) {
+      onCancel(performClose);
+      return;
+    }
+    performClose();
   };
 
   if (closedHint) {

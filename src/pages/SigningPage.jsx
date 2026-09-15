@@ -44,6 +44,13 @@ export default function SigningPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   // Region the user just jumped to via "Next Sign" — gets a brief highlight pulse.
   const [highlightedRegionId, setHighlightedRegionId] = useState(null);
+  // Regions signed THIS visit (cleared on remount, i.e. next time they open the
+  // document) that haven't been through a final Submit yet — eligible to be
+  // discarded if they close without finishing. Older, already-persisted work from
+  // a prior visit is never touched by the discard flow.
+  const [sessionSignedRegionIds, setSessionSignedRegionIds] = useState(() => new Set());
+  const [discardPrompt, setDiscardPrompt] = useState(null); // { performClose }
+  const [discarding, setDiscarding] = useState(false);
   const scrollerRef = useRef(null);
 
   const load = async () => {
@@ -167,8 +174,13 @@ export default function SigningPage() {
 
   const jumpToNextSign = () => jumpToRegion(unsignedRegionsOrdered[0]);
 
+  const markSignedThisVisit = (regionId) => {
+    setSessionSignedRegionIds((prev) => new Set(prev).add(regionId));
+  };
+
   const submitSignature = async (signaturePayload) => {
     if (!selectedRegion) return;
+    const regionId = selectedRegion.id;
     setSaving(true);
     setError("");
     try {
@@ -182,6 +194,7 @@ export default function SigningPage() {
         height: selectedRegion.height,
         ...signaturePayload
       });
+      markSignedThisVisit(regionId);
       setSelectedRegion(null);
       await load();
       await refreshSavedSignature();
@@ -198,6 +211,11 @@ export default function SigningPage() {
     setError("");
     try {
       await api.post(`/documents/${id}/regions/${region.id}/unsign`);
+      setSessionSignedRegionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(region.id);
+        return next;
+      });
       await load();
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to remove signature"));
@@ -223,6 +241,7 @@ export default function SigningPage() {
         ...savedSignature,
         remember_signature: false
       });
+      markSignedThisVisit(region.id);
       await load();
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to apply signature"));
@@ -263,6 +282,7 @@ export default function SigningPage() {
     setError("");
     try {
       await api.post(`/documents/${id}/submit`);
+      setSessionSignedRegionIds(new Set()); // nothing left to warn about after a real submit
       setSubmitSuccess(true);
     } catch (err) {
       setError(extractApiErrorMessage(err, "Submit failed. Please try again."));
@@ -270,6 +290,81 @@ export default function SigningPage() {
       setSubmitting(false);
     }
   };
+
+  // ── Discard-unsaved-signatures-on-close ───────────────────────────────────
+  // Only regions signed THIS visit are ever eligible — anything from an earlier
+  // visit, or already covered by a completed Submit, is never touched.
+  const handleAppShellCancel = (performClose) => {
+    if (sessionSignedRegionIds.size === 0) {
+      performClose();
+      return;
+    }
+    setDiscardPrompt({ performClose });
+  };
+
+  const discardDraftAndClose = async () => {
+    const performClose = discardPrompt?.performClose;
+    setDiscarding(true);
+    try {
+      await api.post(`/documents/${id}/regions/discard-draft`, {
+        region_ids: Array.from(sessionSignedRegionIds)
+      });
+    } catch {
+      // Best-effort — still close as the user asked even if the cleanup call failed.
+    } finally {
+      setDiscarding(false);
+      setDiscardPrompt(null);
+      performClose?.();
+    }
+  };
+
+  const keepAndClose = () => {
+    const performClose = discardPrompt?.performClose;
+    setDiscardPrompt(null);
+    performClose?.();
+  };
+
+  // Native browser tab-close (the X on the tab, refresh, back). Browsers block
+  // custom dialogs here — only their own generic "Leave site?" prompt appears —
+  // so this is best-effort: if the user actually leaves, fire a fire-and-forget
+  // discard for this visit's unsaved signatures. `fetch(keepalive)` (unlike
+  // sendBeacon) supports the Authorization header and survives page teardown.
+  useEffect(() => {
+    if (sessionSignedRegionIds.size === 0) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    const handlePageHide = (event) => {
+      // event.persisted means the page is going into the back/forward cache, not
+      // actually being torn down (the user could come right back) — don't discard.
+      if (event.persisted) return;
+      const token = useAuthStore.getState().token;
+      const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+      try {
+        fetch(`${baseURL}/documents/${id}/regions/discard-draft`, {
+          method: "POST",
+          keepalive: true,
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ region_ids: Array.from(sessionSignedRegionIds) })
+        });
+      } catch {
+        // best-effort only — nothing to recover from here
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [sessionSignedRegionIds, id]);
 
   // ── Submission success screen ─────────────────────────────────────────────
   // Integration flow: signer reached this via a launch URL; they shouldn't see
@@ -313,7 +408,7 @@ export default function SigningPage() {
   const totalPages = document?.total_pages || 0;
 
   return (
-    <AppShell title="Signing Page">
+    <AppShell title="Signing Page" onCancel={handleAppShellCancel}>
       {error ? <p className="mb-3 text-red-400">{error}</p> : null}
 
       {/* ── Progress counter + controls ── */}
@@ -524,6 +619,39 @@ export default function SigningPage() {
                 type="button"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Close-without-saving guard: only fires when something was signed this
+          visit but never went through a final Submit. */}
+      {discardPrompt ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+            <h2 className="mb-3 text-lg font-semibold text-sky-100">Close without submitting?</h2>
+            <p className="mb-5 text-sm text-slate-400">
+              You signed {sessionSignedRegionIds.size} region{sessionSignedRegionIds.size !== 1 ? "s" : ""} this visit
+              but haven't submitted the document. Discard {sessionSignedRegionIds.size !== 1 ? "them" : "it"}, or keep
+              and close anyway?
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                className="rounded-lg border border-red-700 px-4 py-2 text-sm text-red-300 hover:bg-red-900/40 disabled:opacity-50"
+                onClick={discardDraftAndClose}
+                disabled={discarding}
+                type="button"
+              >
+                {discarding ? "Discarding…" : "Discard & Close"}
+              </button>
+              <button
+                className="rounded-lg bg-emerald-700 px-4 py-2 text-sm hover:bg-emerald-600 disabled:opacity-50"
+                onClick={keepAndClose}
+                disabled={discarding}
+                type="button"
+              >
+                Keep & Close
               </button>
             </div>
           </div>

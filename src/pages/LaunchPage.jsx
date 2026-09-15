@@ -40,17 +40,31 @@ export default function LaunchPage() {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
 
-    async function doLaunch() {
+    // CpaDesk's SQL Server is occasionally unreachable for a moment (network
+    // blip, connection-pool exhaustion). The backend now reports that
+    // specifically as 503 instead of a misleading "not found"/401, so retry a
+    // couple of times automatically before ever bothering the user with an
+    // error — this is the fix for the intermittent "session timeout" reports.
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 1500;
+
+    async function doLaunch(attempt = 1) {
       try {
-        setStatus("Authenticating with external software…");
+        setStatus(
+          attempt === 1
+            ? "Authenticating with external software…"
+            : `Reconnecting to external software… (attempt ${attempt}/${MAX_ATTEMPTS})`
+        );
         const params = { token, role };
         if (loginDetailId) {
           params.loginDetailId = loginDetailId;
         }
         const { data } = await api.get("/integration/launch", {
           params,
-          timeout: 45000
+          timeout: 45000,
+          signal: controller.signal
         });
 
         if (cancelled) return;
@@ -67,15 +81,22 @@ export default function LaunchPage() {
           navigate(data.next_route, { replace: true });
         }
       } catch (err) {
-        if (!cancelled) {
-          setError(extractApiErrorMessage(err, "Launch failed. The link may have expired or already been used."));
+        if (cancelled) return;
+        const isTemporary = err?.response?.status === 503;
+        if (isTemporary && attempt < MAX_ATTEMPTS) {
+          setStatus("Temporarily unable to reach external software, retrying…");
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+          if (!cancelled) await doLaunch(attempt + 1);
+          return;
         }
+        setError(extractApiErrorMessage(err, "Launch failed. The link may have expired or already been used."));
       }
     }
 
     doLaunch();
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
