@@ -72,22 +72,42 @@ export default function AnnotateOnlyPage() {
       return;
     }
     let revoked = "";
-    async function load() {
+    let cancelled = false;
+
+    // Resolving `ref` hits CpaDesk's SQL Server, which is occasionally slow/
+    // unreachable for a moment; the backend now reports that as 503 (instead of
+    // hanging or a raw 500) with a bounded worst-case around ~28s, so give this
+    // request real headroom (was the 15s default, which fired before the
+    // backend even had a chance to reply) and retry once automatically.
+    const REQUEST_TIMEOUT_MS = 45000;
+    const MAX_ATTEMPTS = 2;
+    const RETRY_DELAY_MS = 1500;
+
+    async function load(attempt = 1) {
       try {
         const [metaRes, fileRes] = await Promise.all([
-          api.get(`/annotate/${ref}/meta`),
-          api.get(`/annotate/${ref}/file`, { responseType: "blob" })
+          api.get(`/annotate/${ref}/meta`, { timeout: REQUEST_TIMEOUT_MS }),
+          api.get(`/annotate/${ref}/file`, { responseType: "blob", timeout: REQUEST_TIMEOUT_MS })
         ]);
+        if (cancelled) return;
         setTotalPages(metaRes.data.total_pages || 0);
         const url = URL.createObjectURL(fileRes.data);
         revoked = url;
         setFileUrl(url);
       } catch (err) {
+        if (cancelled) return;
+        const isTemporary = err?.response?.status === 503;
+        if (isTemporary && attempt < MAX_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+          if (!cancelled) await load(attempt + 1);
+          return;
+        }
         setError(extractApiErrorMessage(err, "Failed to load document for annotation"));
       }
     }
     load();
     return () => {
+      cancelled = true;
       if (revoked) URL.revokeObjectURL(revoked);
     };
   }, [ref]);
