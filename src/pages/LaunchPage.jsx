@@ -43,13 +43,21 @@ export default function LaunchPage() {
     const controller = new AbortController();
 
     // CpaDesk's SQL Server is occasionally unreachable for a moment (network
-    // blip, connection-pool exhaustion). The backend now reports that
-    // specifically as 503 instead of a misleading "not found"/401, so retry
-    // once automatically before ever bothering the user with an error — this is
-    // the fix for the intermittent "session timeout" reports. Kept to a single
-    // retry (not more): the backend already retries internally with its own
-    // bounded timeout, so stacking more attempts here would only compound
+    // blip, connection-pool exhaustion). The backend reports that specifically
+    // as 503 instead of a misleading "not found"/401, so retry once
+    // automatically before ever bothering the user with an error. Kept to a
+    // single retry (not more): the backend already retries internally with its
+    // own bounded timeout, so stacking more attempts here would only compound
     // worst-case wait time instead of helping.
+    //
+    // Separately: an admin's FIRST launch of a document also downloads the
+    // actual PDF from CPA's file host in this same request (see
+    // bootstrap_external_document / _download_pdf, 60s bound on the backend) —
+    // reported in the field as larger files (3MB+) sometimes failing to load.
+    // The old 45s client timeout could fire before a legitimately slow (but
+    // working) large-file download even finished on the backend, so this needs
+    // headroom above SQL (~28s worst case) + download (60s) combined.
+    const REQUEST_TIMEOUT_MS = 100000;
     const MAX_ATTEMPTS = 2;
     const RETRY_DELAY_MS = 1500;
 
@@ -66,7 +74,7 @@ export default function LaunchPage() {
         }
         const { data } = await api.get("/integration/launch", {
           params,
-          timeout: 45000,
+          timeout: REQUEST_TIMEOUT_MS,
           signal: controller.signal
         });
 
