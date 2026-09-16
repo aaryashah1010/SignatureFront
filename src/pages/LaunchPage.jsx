@@ -44,10 +44,13 @@ export default function LaunchPage() {
 
     // CpaDesk's SQL Server is occasionally unreachable for a moment (network
     // blip, connection-pool exhaustion). The backend now reports that
-    // specifically as 503 instead of a misleading "not found"/401, so retry a
-    // couple of times automatically before ever bothering the user with an
-    // error — this is the fix for the intermittent "session timeout" reports.
-    const MAX_ATTEMPTS = 3;
+    // specifically as 503 instead of a misleading "not found"/401, so retry
+    // once automatically before ever bothering the user with an error — this is
+    // the fix for the intermittent "session timeout" reports. Kept to a single
+    // retry (not more): the backend already retries internally with its own
+    // bounded timeout, so stacking more attempts here would only compound
+    // worst-case wait time instead of helping.
+    const MAX_ATTEMPTS = 2;
     const RETRY_DELAY_MS = 1500;
 
     async function doLaunch(attempt = 1) {
