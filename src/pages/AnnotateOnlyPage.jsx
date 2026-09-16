@@ -74,12 +74,14 @@ export default function AnnotateOnlyPage() {
     let revoked = "";
     let cancelled = false;
 
-    // Resolving `ref` hits CpaDesk's SQL Server, which is occasionally slow/
-    // unreachable for a moment; the backend now reports that as 503 (instead of
-    // hanging or a raw 500) with a bounded worst-case around ~28s, so give this
-    // request real headroom (was the 15s default, which fired before the
-    // backend even had a chance to reply) and retry once automatically.
-    const REQUEST_TIMEOUT_MS = 45000;
+    // Resolving `ref` hits CpaDesk's SQL Server (bounded ~28s worst case, backend
+    // now returns a clear 503 instead of hanging or raw 500 — see doLaunch in
+    // LaunchPage for the same pattern), then downloads the actual PDF from
+    // CPA's file host, which has its own 60s bound on the backend. Give this
+    // request real headroom above that combined worst case (was the 15s
+    // default, which fired long before the backend could ever finish) and
+    // retry once automatically on the SQL-side 503.
+    const REQUEST_TIMEOUT_MS = 90000;
     const MAX_ATTEMPTS = 2;
     const RETRY_DELAY_MS = 1500;
 
