@@ -93,6 +93,7 @@ function AnnotationOverlay({ annotation, viewport, readOnly, onClick }) {
 
 export default function PdfPageCanvas({
   fileUrl,
+  pdfHttpHeaders,
   pageNumber,
   onPageViewport,
   overlays,
@@ -123,7 +124,7 @@ export default function PdfPageCanvas({
     async function render() {
       if (!fileUrl || !canvasRef.current) return;
       try {
-        const pdf = await loadPdfFromUrl(fileUrl);
+        const pdf = await loadPdfFromUrl(fileUrl, { httpHeaders: pdfHttpHeaders });
         if (cancelled) return;
         const page = await pdf.getPage(pageNumber);
         if (cancelled) return;

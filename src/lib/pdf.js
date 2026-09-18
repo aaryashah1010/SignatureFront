@@ -7,9 +7,12 @@ GlobalWorkerOptions.workerPort = new PdfJsWorker();
 // re-parse the file once for each rendered page.
 const cache = new Map();
 
-export async function loadPdfFromUrl(url) {
+// `httpHeaders` (e.g. Authorization) only matters for a real network URL — a
+// blob: URL is already fully in memory locally and never hits the network, so
+// passing headers for one is harmless but has no effect.
+export async function loadPdfFromUrl(url, { httpHeaders } = {}) {
   if (cache.has(url)) return cache.get(url);
-  const promise = getDocument(url).promise.catch((err) => {
+  const promise = getDocument({ url, httpHeaders }).promise.catch((err) => {
     cache.delete(url);
     throw err;
   });

@@ -1,42 +1,64 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
 import PdfDocumentScroller from "../components/PdfDocumentScroller";
 import PdfPageCanvas from "../components/PdfPageCanvas";
 import { extractApiErrorMessage } from "../lib/errorMessage";
+import { useAuthStore } from "../store/authStore";
 
 export default function DocumentPreviewPage() {
   const { id } = useParams();
+  const { token } = useAuthStore();
   const [document, setDocument] = useState(null);
-  const [fileUrl, setFileUrl] = useState("");
   const [activePage, setActivePage] = useState(1);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       try {
-        const [docRes, fileRes] = await Promise.all([
-          api.get(`/documents/${id}`),
-          api.get(`/documents/${id}/file`, { responseType: "blob" })
-        ]);
-        setDocument(docRes.data);
-        setFileUrl(URL.createObjectURL(fileRes.data));
+        const docRes = await api.get(`/documents/${id}`);
+        if (!cancelled) setDocument(docRes.data);
       } catch (err) {
-        setError(extractApiErrorMessage(err, "Failed to preview document"));
+        if (!cancelled) setError(extractApiErrorMessage(err, "Failed to preview document"));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     load();
     return () => {
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
+      cancelled = true;
     };
   }, [id]);
 
   const totalPages = document?.total_pages || 0;
 
+  // Point pdf.js directly at the file endpoint instead of pre-downloading the
+  // whole PDF as a blob first — pdf.js then streams it via HTTP range requests
+  // and can render the first page as soon as enough bytes arrive, instead of
+  // waiting for a large file to fully transfer before anything shows.
+  const fileUrl = useMemo(() => {
+    const base = api.defaults.baseURL || "";
+    return `${base.replace(/\/$/, "")}/documents/${id}/file`;
+  }, [id]);
+  const pdfHttpHeaders = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : undefined),
+    [token]
+  );
+
   return (
     <AppShell title="Document Preview">
       {error ? <p className="mb-4 text-red-400">{error}</p> : null}
+
+      {loading ? (
+        <div className="flex items-center gap-3 text-sm text-slate-300">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          Loading document…
+        </div>
+      ) : null}
+
       {document ? (
         <div className="mb-4 text-sm text-slate-300">
           <p>Title: {document.title}</p>
@@ -45,7 +67,7 @@ export default function DocumentPreviewPage() {
         </div>
       ) : null}
 
-      {fileUrl && totalPages > 0 ? (
+      {!loading && totalPages > 0 ? (
         <PdfDocumentScroller
           totalPages={totalPages}
           activePage={activePage}
@@ -53,6 +75,7 @@ export default function DocumentPreviewPage() {
           renderPage={(n) => (
             <PdfPageCanvas
               fileUrl={fileUrl}
+              pdfHttpHeaders={pdfHttpHeaders}
               pageNumber={n}
               overlays={[]}
               annotations={(document?.annotations || []).filter((a) => a.page_number === n)}
