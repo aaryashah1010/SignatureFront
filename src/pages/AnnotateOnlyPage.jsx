@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import AppShell from "../components/AppShell";
@@ -47,10 +47,15 @@ export default function AnnotateOnlyPage() {
   const [searchParams] = useSearchParams();
   const ref = searchParams.get("ref") || "";
 
-  const [fileUrl, setFileUrl] = useState("");
   const [totalPages, setTotalPages] = useState(0);
   const [activePage, setActivePage] = useState(1);
   const [pageViewports, setPageViewports] = useState({});
+  const [loading, setLoading] = useState(true);
+  // `loading` only covers the (fast) metadata fetch. The actual PDF is streamed
+  // and rendered by pdf.js afterwards, which is the slow part for a large file —
+  // track that separately so the spinner stays up until the first page is
+  // actually visible, not just until the JSON metadata arrives.
+  const [firstPageReady, setFirstPageReady] = useState(false);
 
   const [dragPage, setDragPage] = useState(null);
   const [startPoint, setStartPoint] = useState(null);
@@ -71,31 +76,28 @@ export default function AnnotateOnlyPage() {
       setError("No annotation reference provided in the link.");
       return;
     }
-    let revoked = "";
     let cancelled = false;
+    setLoading(true);
+    setFirstPageReady(false);
+    setError("");
 
     // Resolving `ref` hits CpaDesk's SQL Server (bounded ~28s worst case, backend
     // now returns a clear 503 instead of hanging or raw 500 — see doLaunch in
-    // LaunchPage for the same pattern), then downloads the actual PDF from
-    // CPA's file host, which has its own 60s bound on the backend. Give this
-    // request real headroom above that combined worst case (was the 15s
-    // default, which fired long before the backend could ever finish) and
-    // retry once automatically on the SQL-side 503.
-    const REQUEST_TIMEOUT_MS = 90000;
+    // LaunchPage for the same pattern). Give this metadata request real headroom
+    // (was the 15s default, which fired long before the backend could ever
+    // finish) and retry once automatically on the SQL-side 503. The actual PDF
+    // is no longer pre-downloaded here — pdf.js streams it directly from
+    // /annotate/{ref}/file via HTTP range requests, so a large file doesn't
+    // have to fully transfer before anything renders.
+    const REQUEST_TIMEOUT_MS = 45000;
     const MAX_ATTEMPTS = 2;
     const RETRY_DELAY_MS = 1500;
 
     async function load(attempt = 1) {
       try {
-        const [metaRes, fileRes] = await Promise.all([
-          api.get(`/annotate/${ref}/meta`, { timeout: REQUEST_TIMEOUT_MS }),
-          api.get(`/annotate/${ref}/file`, { responseType: "blob", timeout: REQUEST_TIMEOUT_MS })
-        ]);
+        const metaRes = await api.get(`/annotate/${ref}/meta`, { timeout: REQUEST_TIMEOUT_MS });
         if (cancelled) return;
         setTotalPages(metaRes.data.total_pages || 0);
-        const url = URL.createObjectURL(fileRes.data);
-        revoked = url;
-        setFileUrl(url);
       } catch (err) {
         if (cancelled) return;
         const isTemporary = err?.response?.status === 503;
@@ -105,13 +107,20 @@ export default function AnnotateOnlyPage() {
           return;
         }
         setError(extractApiErrorMessage(err, "Failed to load document for annotation"));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     load();
     return () => {
       cancelled = true;
-      if (revoked) URL.revokeObjectURL(revoked);
     };
+  }, [ref]);
+
+  const fileUrl = useMemo(() => {
+    if (!ref) return "";
+    const base = api.defaults.baseURL || "";
+    return `${base.replace(/\/$/, "")}/annotate/${ref}/file`;
   }, [ref]);
 
   const setViewportForPage = useCallback((n, vp) => {
@@ -338,7 +347,14 @@ export default function AnnotateOnlyPage() {
 
       <p className="mb-2 text-xs text-slate-400">{activeToolHint}</p>
 
-      {fileUrl && totalPages > 0 ? (
+      {loading || (!loading && totalPages > 0 && !firstPageReady) ? (
+        <div className="mb-4 flex items-center gap-3 text-sm text-slate-300">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          {loading ? "Loading document…" : "Rendering document…"}
+        </div>
+      ) : null}
+
+      {!loading && fileUrl && totalPages > 0 ? (
         <PdfDocumentScroller
           totalPages={totalPages}
           activePage={activePage}
@@ -347,7 +363,10 @@ export default function AnnotateOnlyPage() {
             <PdfPageCanvas
               fileUrl={fileUrl}
               pageNumber={n}
-              onPageViewport={(vp) => setViewportForPage(n, vp)}
+              onPageViewport={(vp) => {
+                setViewportForPage(n, vp);
+                if (n === 1) setFirstPageReady(true);
+              }}
               annotations={annotationsForPage(n)}
               freeDrawPaths={tool === "draw" && dragPage === n ? allDrawStrokes : null}
               draftAnnotation={draftAnnotationForPage(n)}
