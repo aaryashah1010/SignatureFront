@@ -21,13 +21,18 @@ function denormalize(region, viewport) {
 export default function SigningPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const [document, setDocument] = useState(null);
-  const [fileUrl, setFileUrl] = useState("");
   const [activePage, setActivePage] = useState(1);
   // Each rendered PdfPageCanvas reports its own pixel viewport; keep them per-page
   // so we denormalize region rectangles against the correct page size.
   const [pageViewports, setPageViewports] = useState({});
+  const [loading, setLoading] = useState(true);
+  // `loading` only covers the initial metadata fetch. The actual PDF is streamed
+  // and rendered by pdf.js afterwards (and re-rendered after every sign, since
+  // the file content changes) — track that separately so the spinner reappears
+  // whenever a new version of the file is being rendered, not just on first open.
+  const [firstPageReady, setFirstPageReady] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [savedSignature, setSavedSignature] = useState(null);
   // #2 — one signature method locked for the whole document (draw | type | upload).
@@ -55,13 +60,8 @@ export default function SigningPage() {
 
   const load = async () => {
     try {
-      const [docRes, fileRes] = await Promise.all([
-        api.get(`/documents/${id}`),
-        api.get(`/documents/${id}/file`, { responseType: "blob" })
-      ]);
+      const docRes = await api.get(`/documents/${id}`);
       setDocument(docRes.data);
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-      setFileUrl(URL.createObjectURL(fileRes.data));
       return docRes.data;
     } catch (err) {
       setError(extractApiErrorMessage(err, "Failed to load signing document"));
@@ -70,11 +70,32 @@ export default function SigningPage() {
   };
 
   useEffect(() => {
-    load();
-    return () => {
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-    };
+    load().finally(() => setLoading(false));
   }, [id]);
+
+  // Point pdf.js directly at the file endpoint instead of pre-downloading the
+  // whole PDF as a blob first — pdf.js then streams it via HTTP range requests
+  // and can render the first page as soon as enough bytes arrive, instead of
+  // waiting for a large file to fully transfer before anything shows. The `v`
+  // param changes whenever the signed PDF actually changes (a new signature
+  // burned in yields a new final_hash), forcing pdf.js to re-fetch instead of
+  // reusing its cached copy of the pre-signature version.
+  const fileUrl = useMemo(() => {
+    if (!document) return "";
+    const base = api.defaults.baseURL || "";
+    const version = document.final_hash || document.status || "";
+    return `${base.replace(/\/$/, "")}/documents/${id}/file?v=${encodeURIComponent(version)}`;
+  }, [id, document?.final_hash, document?.status]);
+  const pdfHttpHeaders = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : undefined),
+    [token]
+  );
+
+  // Whenever the file actually changes (new fileUrl), the spinner should
+  // reappear until the newly-rendered first page is visible again.
+  useEffect(() => {
+    setFirstPageReady(false);
+  }, [fileUrl]);
 
   // Load the user's remembered signature. Called on mount AND after every sign, so a
   // signature the user just chose to "remember" becomes usable immediately on the
@@ -482,7 +503,14 @@ export default function SigningPage() {
         </button>
       </div>
 
-      {fileUrl && totalPages > 0 ? (
+      {loading || (!loading && totalPages > 0 && !firstPageReady) ? (
+        <div className="mb-4 flex items-center gap-3 text-sm text-slate-300">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          {loading ? "Loading document…" : "Rendering document…"}
+        </div>
+      ) : null}
+
+      {!loading && fileUrl && totalPages > 0 ? (
         <PdfDocumentScroller
           ref={scrollerRef}
           totalPages={totalPages}
@@ -491,8 +519,12 @@ export default function SigningPage() {
           renderPage={(n) => (
             <PdfPageCanvas
               fileUrl={fileUrl}
+              pdfHttpHeaders={pdfHttpHeaders}
               pageNumber={n}
-              onPageViewport={(vp) => setViewportForPage(n, vp)}
+              onPageViewport={(vp) => {
+                setViewportForPage(n, vp);
+                if (n === 1) setFirstPageReady(true);
+              }}
               overlays={buildOverlaysForPage(n)}
               annotations={(document?.annotations || []).filter((a) => a.page_number === n)}
               readOnlyAnnotations

@@ -5,6 +5,7 @@ import AppShell from "../components/AppShell";
 import PdfDocumentScroller from "../components/PdfDocumentScroller";
 import PdfPageCanvas from "../components/PdfPageCanvas";
 import { extractApiErrorMessage } from "../lib/errorMessage";
+import { useAuthStore } from "../store/authStore";
 
 const TOOLS = [
   { value: "box", label: "Signature Box", hint: "Drag to mark where the signer must sign." },
@@ -44,13 +45,18 @@ function strokeBounds(strokes) {
 
 export default function RegionSelectionPage() {
   const { id } = useParams();
+  const { token } = useAuthStore();
   const [document, setDocument] = useState(null);
   const [signers, setSigners] = useState([]);
   const [selectedSigner, setSelectedSigner] = useState("");
-  const [fileUrl, setFileUrl] = useState("");
   const [activePage, setActivePage] = useState(1);
   // One viewport entry per rendered page (each PdfPageCanvas reports its size).
   const [pageViewports, setPageViewports] = useState({});
+  const [loading, setLoading] = useState(true);
+  // `loading` only covers the initial metadata/signers fetch. The actual PDF is
+  // streamed and rendered by pdf.js afterwards — track that separately so the
+  // spinner stays up until the first page is actually visible.
+  const [firstPageReady, setFirstPageReady] = useState(false);
 
   // Drag state is tied to the page the drag started on. Highlight/text/box use
   // (startPoint + draftBox); draw uses (drawStrokes + activeStroke).
@@ -76,12 +82,8 @@ export default function RegionSelectionPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [docRes, fileRes] = await Promise.all([
-          api.get(`/documents/${id}`),
-          api.get(`/documents/${id}/file`, { responseType: "blob" })
-        ]);
+        const docRes = await api.get(`/documents/${id}`);
         setDocument(docRes.data);
-        setFileUrl(URL.createObjectURL(fileRes.data));
 
         let fetchedSigners = [];
         try {
@@ -101,13 +103,27 @@ export default function RegionSelectionPage() {
         setSelectedSigner(fetchedSigners.length === 1 ? fetchedSigners[0].id : "");
       } catch (err) {
         setError(extractApiErrorMessage(err, "Failed to load region setup"));
+      } finally {
+        setLoading(false);
       }
     }
     load();
-    return () => {
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-    };
   }, [id]);
+
+  // Point pdf.js directly at the file endpoint instead of pre-downloading the
+  // whole PDF as a blob first — it can then stream via HTTP range requests and
+  // render the first page as soon as enough bytes arrive. Unlike the signing
+  // page, this document's underlying bytes don't change while this page is
+  // open (regions/annotations here are local state until the final Save), so
+  // no cache-busting version param is needed.
+  const fileUrl = useMemo(() => {
+    const base = api.defaults.baseURL || "";
+    return `${base.replace(/\/$/, "")}/documents/${id}/file`;
+  }, [id]);
+  const pdfHttpHeaders = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : undefined),
+    [token]
+  );
 
   const setViewportForPage = useCallback((n, vp) => {
     setPageViewports((prev) => {
@@ -509,7 +525,14 @@ export default function RegionSelectionPage() {
 
       <p className="mb-2 text-xs text-slate-400">{activeToolHint}</p>
 
-      {fileUrl && totalPages > 0 ? (
+      {loading || (!loading && totalPages > 0 && !firstPageReady) ? (
+        <div className="mb-4 flex items-center gap-3 text-sm text-slate-300">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          {loading ? "Loading document…" : "Rendering document…"}
+        </div>
+      ) : null}
+
+      {!loading && totalPages > 0 ? (
         <PdfDocumentScroller
           totalPages={totalPages}
           activePage={activePage}
@@ -517,8 +540,12 @@ export default function RegionSelectionPage() {
           renderPage={(n) => (
             <PdfPageCanvas
               fileUrl={fileUrl}
+              pdfHttpHeaders={pdfHttpHeaders}
               pageNumber={n}
-              onPageViewport={(vp) => setViewportForPage(n, vp)}
+              onPageViewport={(vp) => {
+                setViewportForPage(n, vp);
+                if (n === 1) setFirstPageReady(true);
+              }}
               overlays={overlaysForPage(n)}
               annotations={annotationsForPage(n)}
               freeDrawPaths={tool === "draw" && dragPage === n ? allDrawStrokes : null}
