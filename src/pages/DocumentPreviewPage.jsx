@@ -14,9 +14,17 @@ export default function DocumentPreviewPage() {
   const [activePage, setActivePage] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  // `loading` only covers the (fast) metadata fetch. The actual PDF is streamed
+  // and rendered by pdf.js afterwards, which is the slow part for a large file —
+  // track that separately so the spinner stays up until the first page is
+  // actually visible, not just until the JSON metadata arrives.
+  const [firstPageReady, setFirstPageReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setFirstPageReady(false);
+    setError("");
     async function load() {
       try {
         const docRes = await api.get(`/documents/${id}`);
@@ -52,10 +60,10 @@ export default function DocumentPreviewPage() {
     <AppShell title="Document Preview">
       {error ? <p className="mb-4 text-red-400">{error}</p> : null}
 
-      {loading ? (
-        <div className="flex items-center gap-3 text-sm text-slate-300">
+      {loading || (!loading && totalPages > 0 && !firstPageReady) ? (
+        <div className="mb-4 flex items-center gap-3 text-sm text-slate-300">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
-          Loading document…
+          {loading ? "Loading document…" : "Rendering document…"}
         </div>
       ) : null}
 
@@ -77,6 +85,7 @@ export default function DocumentPreviewPage() {
               fileUrl={fileUrl}
               pdfHttpHeaders={pdfHttpHeaders}
               pageNumber={n}
+              onPageViewport={n === 1 ? () => setFirstPageReady(true) : undefined}
               overlays={[]}
               annotations={(document?.annotations || []).filter((a) => a.page_number === n)}
               readOnlyAnnotations
